@@ -32,7 +32,7 @@
 
 {application, ejabberd,
  Vars ++
- [{modules, []},
+ [{modules, [mod_push_notify]},
   {registered, []},
   {applications, [kernel, sasl, ssl, stdlib, syntax_tools]},
   {included_applications,

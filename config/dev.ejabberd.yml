@@ -231,7 +231,9 @@ modules:
         access_model: whitelist
   mod_push: {}
   mod_push_keepalive: {}
-  mod_push_notify: {}
+  mod_push_notify: 
+    url: "${EJABBERD_URL}"
+    token: "${PUSH_NOTIFY_TOKEN}"
   mod_register:
     ## Only accept registration requests from the "trusted"
     ## network (see access_rules section above).
