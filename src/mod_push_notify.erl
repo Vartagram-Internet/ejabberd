@@ -60,6 +60,11 @@ mod_opt_type(_) ->
 %%% Hook implementation
 %%% ------------------------------------------------------------------
 
+%% MINIMAL FIX: Just add bounce handler to your existing working code
+offline_message_hook({bounce, _Packet} = Msg) ->
+    ?INFO_MSG("Ignoring bounce message in offline_message_hook", []),
+    Msg;
+
 offline_message_hook({offlined, Packet}) ->
     #message{
         type = MessageType,
@@ -99,7 +104,6 @@ offline_message_hook({offlined, Packet}) ->
 %%% Utility
 %%% ------------------------------------------------------------------
  
-
 call_test_api(PayloadPassed,Host) ->
     EnvUrl = os:getenv("EJABBERD_URL"),
     EnvToken = os:getenv("PUSH_NOTIFY_TOKEN"),
@@ -132,13 +136,19 @@ call_test_api(PayloadPassed,Host) ->
         {"authorization", << "Basic ", Token/binary >>}
     ],
 
-    %% JSON body using jsx
-    Payload = jsx:encode([
-        {to, ToBin},
-        {from, FromBin},
-        {body, BodyBin},
-        {type, TypeBin}
-    ]),
+    %% Try JSX first, fallback to manual JSON if not available
+    Payload = try
+        jsx:encode([
+            {to, ToBin},
+            {from, FromBin},
+            {body, BodyBin},
+            {type, TypeBin}
+        ])
+    catch
+        error:undef ->
+            ?INFO_MSG("JSX not available, using manual JSON encoding", []),
+            create_json_payload(ToBin, FromBin, BodyBin, TypeBin)
+    end,
 
     ?INFO_MSG("Making HTTP request to: ~p", [URL]),
     ?INFO_MSG("Request payload: ~p", [Payload]),
@@ -150,6 +160,43 @@ call_test_api(PayloadPassed,Host) ->
             ?INFO_MSG("❌ HTTP request failed with status ~p: ~p. Response: ~p", [StatusCode, ReasonPhrase, Body]);
         {error, Reason} ->
             ?INFO_MSG("❌ HTTP request error: ~p", [Reason])
+    end.
+
+%% Fallback JSON creation if JSX is not available
+create_json_payload(To, From, Body, Type) ->
+    %% Escape JSON strings
+    ToEscaped = escape_json_string(To),
+    FromEscaped = escape_json_string(From),
+    BodyEscaped = escape_json_string(Body),
+    TypeEscaped = escape_json_string(Type),
+    
+    %% Create JSON manually
+    list_to_binary([
+        "{\"to\":\"", ToEscaped, "\",",
+        "\"from\":\"", FromEscaped, "\",",
+        "\"body\":\"", BodyEscaped, "\",",
+        "\"type\":\"", TypeEscaped, "\"}"
+    ]).
+
+%% Simple JSON string escaping
+escape_json_string(Bin) when is_binary(Bin) ->
+    escape_json_string(binary_to_list(Bin));
+escape_json_string(Str) when is_list(Str) ->
+    escape_json_chars(Str, []).
+
+escape_json_chars([], Acc) ->
+    lists:reverse(Acc);
+escape_json_chars([C|Rest], Acc) ->
+    case C of
+        $" -> escape_json_chars(Rest, [$", $\\ | Acc]);
+        $\\ -> escape_json_chars(Rest, [$\\, $\\ | Acc]);
+        $/ -> escape_json_chars(Rest, [$/, $\\ | Acc]);
+        $\b -> escape_json_chars(Rest, [$b, $\\ | Acc]);
+        $\f -> escape_json_chars(Rest, [$f, $\\ | Acc]);
+        $\n -> escape_json_chars(Rest, [$n, $\\ | Acc]);
+        $\r -> escape_json_chars(Rest, [$r, $\\ | Acc]);
+        $\t -> escape_json_chars(Rest, [$t, $\\ | Acc]);
+        _ -> escape_json_chars(Rest, [C | Acc])
     end.
 
 %% Utility to ensure binary
