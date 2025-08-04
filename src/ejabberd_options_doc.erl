@@ -109,14 +109,20 @@ doc() ->
         desc =>
             ?T("_`database.md#default-database|Default database`_ "
                "to store persistent data in ejabberd. "
-               "Modules and other components (e.g. authentication) "
-               "may have its own value. The default value is 'mnesia'.")}},
+               "Some components can be configured with specific toplevel options "
+               "like _`oauth_db_type`_. "
+               "Many modules can be configured with specific module options, "
+               "usually named `db_type`. "
+               "The default value is 'mnesia'.")}},
      {default_ram_db,
       #{value => "mnesia | redis | sql",
         desc =>
             ?T("Default volatile (in-memory) storage for ejabberd. "
-               "Modules and other components (e.g. session management) "
-               "may have its own value. The default value is 'mnesia'.")}},
+               "Some components can be configured with specific toplevel options "
+               "like _`router_db_type`_ and _`sm_db_type`_. "
+               "Some modules can be configured with specific module options, "
+               "usually named `ram_db_type`. "
+               "The default value is 'mnesia'.")}},
      {queue_type,
       #{value => "ram | file",
         desc =>
@@ -393,12 +399,12 @@ doc() ->
                "depends on the _`auth_scram_hash`_ option."), "",
             ?T("The default value is 'plain'."), ""]}},
 
-     {auth_password_types_hidden_in_scram1,
+     {auth_password_types_hidden_in_sasl1,
       #{value => "[plain | scram_sha1 | scram_sha256 | scram_sha512]",
         note => "added in 25.07",
         desc =>
-        ?T("List of password types that should not be offered in SCRAM1 authenticatication. "
-           "Because SCRAM1, unlike SCRAM2, can't have list of available mechanisms tailored to "
+        ?T("List of password types that should not be offered in SASL1 authenticatication. "
+           "Because SASL1, unlike SASL2, can't have list of available mechanisms tailored to "
            "individual user, it's possible that offered mechanisms will not be compatible "
            "with stored password, especially if new password type was added recently. "
            "This option allows disabling offering some mechanisms in SASL1, to a time until new "
