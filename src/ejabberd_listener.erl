@@ -139,16 +139,13 @@ init({Port, _, udp} = EndPoint, Module, Opts, SockOpts) ->
 			{error, _} ->
 			    ok
 		    end;
-		{error, Reason} = Err ->
-		    report_socket_error(Reason, EndPoint, Module),
-		    proc_lib:init_ack(Err)
+		{error, Reason} ->
+		    return_socket_error(Reason, EndPoint, Module)
 	    end;
-	{{error, Reason} = Err, _} ->
-	    report_socket_error(Reason, EndPoint, Module),
-	    proc_lib:init_ack(Err);
-	{_, {error, Reason} = Err} ->
-	    report_socket_error(Reason, EndPoint, Module),
-	    proc_lib:init_ack(Err)
+	{{error, Reason}, _} ->
+	    return_socket_error(Reason, EndPoint, Module);
+	{_, {error, Reason} } ->
+	    return_socket_error(Reason, EndPoint, Module)
     end;
 init({Port, _, tcp} = EndPoint, Module, Opts, SockOpts) ->
     case {listen_tcp(Port, SockOpts),
@@ -177,16 +174,13 @@ init({Port, _, tcp} = EndPoint, Module, Opts, SockOpts) ->
 			{error, _} ->
 			    ok
 		    end;
-		{error, Reason} = Err ->
-		    report_socket_error(Reason, EndPoint, Module),
-		    proc_lib:init_ack(Err)
+		{error, Reason} ->
+		    return_socket_error(Reason, EndPoint, Module)
 	    end;
-	{{error, Reason}, _} = Err ->
-	    report_socket_error(Reason, EndPoint, Module),
-	    proc_lib:init_ack(Err);
-	{_, {error, Reason}} = Err ->
-	    report_socket_error(Reason, EndPoint, Module),
-	    proc_lib:init_ack(Err)
+	{{error, Reason}, _} ->
+	    return_socket_error(Reason, EndPoint, Module);
+	{_, {error, Reason}} ->
+	    return_socket_error(Reason, EndPoint, Module)
     end.
 
 -spec listen_tcp(inet:port_number(), [gen_tcp:option()]) ->
@@ -229,7 +223,8 @@ setup_provisional_udsocket_dir(DefinitivePath) ->
     ProvisionalPathAbsolute.
 
 get_provisional_udsocket_path(Path) ->
-    PathBase64 = misc:term_to_base64(Path),
+    ReproducibleSecret = binary:part(crypto:hash(sha, misc:atom_to_binary(erlang:get_cookie())), 1, 8),
+    PathBase64 = misc:term_to_base64({ReproducibleSecret, Path}),
     PathBuild = filename:join(misc:get_home(), PathBase64),
     DestPath = filename:join(filename:dirname(Path), PathBase64),
     case {byte_size(DestPath) > 107, byte_size(PathBuild) > 107} of
@@ -249,7 +244,7 @@ get_definitive_udsocket_path(<<"unix", _>> = Unix) ->
     Unix;
 get_definitive_udsocket_path(ProvisionalPath) ->
     PathBase64 = filename:basename(ProvisionalPath),
-    {term, Path} = misc:base64_to_term(PathBase64),
+    {term, {_, Path}} = misc:base64_to_term(PathBase64),
     relative_socket_to_mnesia(Path).
 
 -spec set_definitive_udsocket(integer() | binary(), opts()) -> ok | {error, file:posix() | badarg}.
@@ -608,10 +603,20 @@ config_reloaded() ->
 	      end
       end, New).
 
--spec report_socket_error(inet:posix(), endpoint(), module()) -> ok.
-report_socket_error(Reason, EndPoint, Module) ->
+-spec return_socket_error(inet:posix(), endpoint(), module()) -> no_return().
+return_socket_error(Reason, EndPoint, Module) ->
     ?ERROR_MSG("Failed to open socket at ~ts for ~ts: ~ts",
-	       [format_endpoint(EndPoint), Module, format_error(Reason)]).
+               [format_endpoint(EndPoint), Module, format_error(Reason)]),
+    return_init_error(Reason).
+
+-ifdef(OTP_BELOW_26).
+return_init_error(Reason) ->
+    proc_lib:init_ack({error, Reason}).
+-else.
+-spec return_init_error(inet:posix()) -> no_return().
+return_init_error(Reason) ->
+    proc_lib:init_fail({error, Reason}, {exit, normal}).
+-endif.
 
 -spec format_error(inet:posix() | atom()) -> string().
 format_error(Reason) ->

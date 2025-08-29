@@ -420,11 +420,6 @@ send_welcome_message(JID) ->
 		     to = JID,
 		     type = chat,
 		     subject = xmpp:mk_text(Subj),
-		     body = xmpp:mk_text(<<Subj/binary, "\n\n", Body/binary>>)}),
-	  ejabberd_router:route(
-	    #message{from = jid:make(Host),
-		     to = JID,
-		     subject = xmpp:mk_text(Subj),
 		     body = xmpp:mk_text(Body)})
     end.
 

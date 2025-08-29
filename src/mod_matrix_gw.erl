@@ -611,22 +611,28 @@ parse_auth4(<<>>, Key, Val, Ts) ->
 
 prune_event(#{<<"type">> := Type, <<"content">> := Content} = Event,
             RoomVersion) ->
-    Event2 =
+    Keys =
         case RoomVersion#room_version.updated_redaction_rules of
             false ->
-                maps:with(
-                  [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
-                   <<"state_key">>, <<"content">>, <<"hashes">>,
-                   <<"signatures">>, <<"depth">>, <<"prev_events">>,
-                   <<"prev_state">>, <<"auth_events">>, <<"origin">>,
-                   <<"origin_server_ts">>, <<"membership">>], Event);
+                [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
+                 <<"state_key">>, <<"content">>, <<"hashes">>,
+                 <<"signatures">>, <<"depth">>, <<"prev_events">>,
+                 <<"prev_state">>, <<"auth_events">>, <<"origin">>,
+                 <<"origin_server_ts">>, <<"membership">>];
             true ->
-                maps:with(
-                  [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
-                   <<"state_key">>, <<"content">>, <<"hashes">>,
-                   <<"signatures">>, <<"depth">>, <<"prev_events">>,
-                   <<"auth_events">>, <<"origin_server_ts">>], Event)
+                [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
+                 <<"state_key">>, <<"content">>, <<"hashes">>,
+                 <<"signatures">>, <<"depth">>, <<"prev_events">>,
+                 <<"auth_events">>, <<"origin_server_ts">>]
         end,
+    Keys2 =
+        case {RoomVersion#room_version.hydra, Type} of
+            {true, <<"m.room.create">>} ->
+                lists:delete(<<"room_id">>, Keys);
+            _ ->
+                Keys
+        end,
+    Event2 = maps:with(Keys2, Event),
     Content2 =
         case Type of
             <<"m.room.member">> ->
@@ -737,6 +743,8 @@ is_canonical_json(N) when is_integer(N),
 is_canonical_json(B) when is_binary(B) ->
     true;
 is_canonical_json(B) when is_boolean(B) ->
+    true;
+is_canonical_json(null) ->
     true;
 is_canonical_json(Map) when is_map(Map) ->
     maps:fold(
@@ -976,7 +984,11 @@ mod_opt_type(key) ->
             crypto:generate_key(eddsa, ed25519, Key2)
     end;
 mod_opt_type(matrix_id_as_jid) ->
-    econf:bool().
+    econf:bool();
+mod_opt_type(notary_servers) ->
+    econf:list(econf:host());
+mod_opt_type(leave_timeout) ->
+    econf:non_neg_int().
 
 -spec mod_options(binary()) -> [{key, {binary(), binary()}} |
                                 {atom(), any()}].
@@ -986,14 +998,19 @@ mod_options(Host) ->
      {host, <<"matrix.", Host/binary>>},
      {key_name, <<"">>},
      {key, {<<"">>, <<"">>}},
-     {matrix_id_as_jid, false}].
+     {matrix_id_as_jid, false},
+     {notary_servers, []},
+     {leave_timeout, 0}].
 
 mod_doc() ->
     #{desc =>
           [?T("https://matrix.org/[Matrix] gateway. "),
+           ?T("Supports room versions 9, 10 and 11 since ejabberd 25.03; "
+              "room versions 4 and higher since ejabberd 25.07; "
+              "room version 12 (hydra rooms) since ejabberd 25.08. "),
            ?T("Erlang/OTP 25 or higher is required to use this module."),
            ?T("This module is available since ejabberd 24.02.")],
-      note => "improved in 25.07",
+      note => "improved in 25.08",
       example =>
 	  ["listen:",
 	   "  -",
@@ -1042,7 +1059,15 @@ mod_doc() ->
 		     "Matrix user '@user:matrixdomain.tld', the client must send a message "
 		     "to the JID 'user%matrixdomain.tld@matrix.myxmppdomain.tld', where "
 		     "'matrix.myxmppdomain.tld' is the JID of the gateway service as set by the "
-		     "'host' option. The default is 'false'.")}}
+		     "'host' option. The default is 'false'.")}},
+	   {notary_servers,
+            #{value => "[Server, ...]",
+              desc =>
+                  ?T("A list of notary servers.")}},
+	   {leave_timeout,
+            #{value => "integer()",
+              desc =>
+                  ?T("Delay in seconds between a user leaving a MUC room and sending 'leave' Matrix event.")}}
           ]
      }.
 -endif.
